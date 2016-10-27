@@ -21,7 +21,7 @@ import theano.tensor as T
 
 from timer import Timer
 
-################### DATASAT HANDLING ####################
+################### DATASET HANDLING ####################
 DATASET_PATH = 'dataset'
 def parseDataset():
 
