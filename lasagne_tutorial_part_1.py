@@ -5,6 +5,7 @@
 #########################################################
 
 import os
+import time
 from sklearn.utils import shuffle
 
 import cv2
@@ -12,21 +13,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from lasagne import layers
-from lasagne import nonlinearities
+from lasagne.nonlinearities import softmax, tanh
 from lasagne import objectives
 from lasagne import updates
 
 import theano
 import theano.tensor as T
 
-from timer import Timer
-
 ################### DATASET HANDLING ####################
 DATASET_PATH = 'dataset'
 def parseDataset():
 
     #we use subfolders as class labels
-    classes = [folder for folder in os.listdir(DATASET_PATH)]
+    classes = [folder for folder in sorted(os.listdir(DATASET_PATH))]
 
     #now we enlist all image paths
     images = []
@@ -120,24 +119,28 @@ def buildModel():
     l_input = layers.InputLayer((None, 3, 64, 64))
 
     #first convolutional layer, has l_input layer as incoming and is followed by a pooling layer
-    l_conv1 = layers.Conv2DLayer(l_input, num_filters=64, filter_size=3)
+    l_conv1 = layers.Conv2DLayer(l_input, num_filters=32, filter_size=3, pad='same', nonlinearity=tanh)
     l_pool1 = layers.MaxPool2DLayer(l_conv1, pool_size=2)
 
     #second convolution (l_pool1 is incoming), let's increase the number of filters
-    l_conv2 = layers.Conv2DLayer(l_pool1, num_filters=128, filter_size=3)
+    l_conv2 = layers.Conv2DLayer(l_pool1, num_filters=64, filter_size=3, pad='same', nonlinearity=tanh)
     l_pool2 = layers.MaxPool2DLayer(l_conv2, pool_size=2)
 
-    #third and final convolution, even more filters
-    l_conv3 = layers.Conv2DLayer(l_pool2, num_filters=256, filter_size=3)
+    #third convolution (l_pool2 is incoming), even more filters
+    l_conv3 = layers.Conv2DLayer(l_pool2, num_filters=128, filter_size=3, pad='same', nonlinearity=tanh)
     l_pool3 = layers.MaxPool2DLayer(l_conv3, pool_size=2)
 
+    #fourth and final convolution
+    l_conv4 = layers.Conv2DLayer(l_pool3, num_filters=256, filter_size=3, pad='same', nonlinearity=tanh)
+    l_pool4 = layers.MaxPool2DLayer(l_conv4, pool_size=2)
+
     #our cnn contains 3 dense layers, one of them is our output layer
-    l_dense1 = layers.DenseLayer(l_pool3, num_units=1024)
-    l_dense2 = layers.DenseLayer(l_dense1, num_units=1024)
+    l_dense1 = layers.DenseLayer(l_pool4, num_units=128, nonlinearity=tanh)
+    l_dense2 = layers.DenseLayer(l_dense1, num_units=128, nonlinearity=tanh)
 
     #the output layer has 5 units which is exactly the count of our class labels
     #it has a softmax activation function, its values represent class probabilities
-    l_output = layers.DenseLayer(l_dense2, num_units=5, nonlinearity=nonlinearities.softmax)
+    l_output = layers.DenseLayer(l_dense2, num_units=5, nonlinearity=softmax)
 
     #let's see how many params our net has
     print "MODEL HAS", layers.count_params(l_output), "PARAMS"
@@ -181,7 +184,7 @@ params = layers.get_all_params(NET, trainable=True)
 
 #we use the adam update
 #it changes params based on our loss function with the learning rate
-param_updates = updates.adam(loss, params, learning_rate=0.00001)
+param_updates = updates.adam(loss, params, learning_rate=0.0001)
 
 #################### TRAIN FUNCTION ######################
 #the theano train functions takes images and class targets as input
@@ -204,8 +207,11 @@ print "DONE!"
 
 ##################### STAT PLOT #########################
 plt.ion()
-label_added = False
 def showChart(epoch, t, v, a):
+
+    #new figure
+    plt.figure(0)
+    plt.clf()
 
     #x-Axis = epoch
     e = range(0, epoch + 1)
@@ -216,11 +222,8 @@ def showChart(epoch, t, v, a):
     plt.plot(e, val_loss, 'b-', label='Val Loss')
     plt.ylabel('loss')
 
-    #show labels only once
-    global label_added
-    if not label_added:
-        plt.legend(loc='upper right', shadow=True)
-    label_added = True
+    #show labels
+    plt.legend(loc='upper right', shadow=True)
 
     #accuracy subplot
     plt.subplot(212)
@@ -231,18 +234,16 @@ def showChart(epoch, t, v, a):
     #show
     plt.show()
     plt.pause(0.5)
-    
 
 ###################### TRAINING #########################
 print "START TRAINING..."
-timer = Timer()
 train_loss = []
 val_loss = []
 val_accuracy = []
-for epoch in range(0, 100):
+for epoch in range(0, 30):
 
     #start timer
-    timer.tic()
+    start = time.time()
 
     #iterate over train split batches and calculate mean loss for epoch
     t_l = []
@@ -263,7 +264,7 @@ for epoch in range(0, 100):
         v_a.append(a)
 
     #stop timer
-    timer.toc()
+    end = time.time()
 
     #calculate stats for epoch
     train_loss.append(np.mean(t_l))
@@ -275,7 +276,7 @@ for epoch in range(0, 100):
     print "TRAIN LOSS:", train_loss[-1],
     print "VAL LOSS:", val_loss[-1],
     print "VAL ACCURACY:", (int(val_accuracy[-1] * 1000) / 10.0), "%",
-    print "TIME:", (int(timer.diff * 10) / 10.0), "s"
+    print "TIME:", (int((end - start) * 10) / 10.0), "s"
 
     #show chart
     showChart(epoch, train_loss, val_loss, val_accuracy)
